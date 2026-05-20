@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { useNotifications } from './useNotifications'
+import { encryptText } from '../lib/crypto'
 
 export const MODES = {
   focus: { label: 'Fokus', mins: 25, color: '#D85A30' },
@@ -23,13 +25,14 @@ export function usePomodoro() {
   const [remainSecs, setRemainSecs] = useState(MODES.focus.mins * 60)
   const [totalSecs, setTotalSecs] = useState(MODES.focus.mins * 60)
   const [running, setRunning] = useState(false)
-  const [pomInCycle, setPomInCycle] = useState(0) // 0–3
+  const [pomInCycle, setPomInCycle] = useState(0)
   const [sessionCount, setSessionCount] = useState(0)
   const [task, setTask] = useState('')
   const [saving, setSaving] = useState(false)
 
   const intervalRef = useRef(null)
   const deviceId = useRef(getDeviceId())
+  const { notify, stopBlink } = useNotifications()
 
   const stop = useCallback(() => {
     clearInterval(intervalRef.current)
@@ -50,7 +53,7 @@ export function usePomodoro() {
     try {
       await supabase.from('pomodoros').insert({
         device_id: deviceId.current,
-        task: taskLabel || null,
+        task: await encryptText(taskLabel) || null,
         duration_mins: MODES.focus.mins,
         completed_at: new Date().toISOString(),
       })
@@ -62,6 +65,7 @@ export function usePomodoro() {
   }, [])
 
   const onFocusComplete = useCallback(async (currentTask) => {
+    notify('focus')
     await savePomodoro(currentTask)
     setSessionCount(prev => prev + 1)
     setPomInCycle(prev => {
@@ -69,11 +73,20 @@ export function usePomodoro() {
       setTimeout(() => switchMode(next === 0 ? 'long' : 'short'), 400)
       return next
     })
-  }, [savePomodoro, switchMode])
+  }, [notify, savePomodoro, switchMode])
 
   const onBreakComplete = useCallback(() => {
+    notify('break')
     setTimeout(() => switchMode('focus'), 400)
-  }, [switchMode])
+  }, [notify, switchMode])
+
+  // Timer stoppen → Blinken stoppen
+  const togglePlay = useCallback(() => {
+    setRunning(r => {
+      if (!r) stopBlink() // beim Starten Blinken stoppen
+      return !r
+    })
+  }, [stopBlink])
 
   // tick
   useEffect(() => {
@@ -93,28 +106,36 @@ export function usePomodoro() {
     return () => clearInterval(intervalRef.current)
   }, [running, mode, task, onFocusComplete, onBreakComplete])
 
-  const togglePlay = useCallback(() => {
-    setRunning(r => !r)
-  }, [])
-
   const reset = useCallback(() => {
     stop()
+    stopBlink()
     setRunning(false)
     const secs = MODES[mode].mins * 60
     setTotalSecs(secs)
     setRemainSecs(secs)
-  }, [mode, stop])
+  }, [mode, stop, stopBlink])
 
   const skip = useCallback(() => {
     stop()
+    stopBlink()
     setRunning(false)
     if (mode === 'focus') switchMode('short')
     else switchMode('focus')
-  }, [mode, stop, switchMode])
+  }, [mode, stop, stopBlink, switchMode])
+
+  // Tab-Titel zeigt laufenden Timer
+  useEffect(() => {
+    if (running) {
+      const mins = Math.floor(remainSecs / 60)
+      const secs = remainSecs % 60
+      document.title = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')} – Pomodoro`
+    } else if (remainSecs === MODES[mode].mins * 60) {
+      document.title = 'Pomodoro'
+    }
+  }, [running, remainSecs, mode])
 
   const progress = totalSecs > 0 ? (totalSecs - remainSecs) / totalSecs : 0
   const dashOffset = progress * CIRCUMFERENCE
-
   const mins = Math.floor(remainSecs / 60)
   const secs = remainSecs % 60
   const displayTime = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`

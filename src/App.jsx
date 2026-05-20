@@ -3,7 +3,7 @@ import { Timer, BarChart2, Moon, Sun } from 'lucide-react'
 import TimerPage from './components/TimerPage'
 import DashboardPage from './components/DashboardPage'
 import { usePomodoro } from './hooks/usePomodoro'
-import { useStats } from './hooks/useStats'
+
 
 export default function App() {
   const [tab, setTab] = useState('timer')
@@ -15,7 +15,7 @@ export default function App() {
   })
 
   const pom = usePomodoro()
-  const stats = useStats()
+  
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
@@ -24,7 +24,7 @@ export default function App() {
   // Seite neu laden wenn auf Dashboard gewechselt wird
   const handleTabChange = (t) => {
     setTab(t)
-    if (t === 'dashboard') stats.load()
+    
   }
 
   return (
@@ -74,7 +74,7 @@ export default function App() {
       <main>
         {tab === 'timer'
           ? <TimerPage pom={pom} />
-          : <DashboardPage stats={stats} />
+          : <DashboardPage />
         }
       </main>
     </div>
